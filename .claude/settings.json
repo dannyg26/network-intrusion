@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/danny/Downloads/MERGED_CSV/MERGED_CSV/**)",
+      "Bash(python3 -c \":*)",
+      "Bash(python3 -c \"import pandas, numpy, sklearn, tensorflow; print\\(''all good''\\)\")",
+      "Bash(python3 -c \"import pandas, numpy, sklearn, torch; print\\(''torch available''\\)\")",
+      "Bash(python -c \"import pandas, numpy, sklearn; print\\(''pandas/numpy/sklearn OK''\\)\")",
+      "Bash(python -c \"import torch; print\\(''torch'', torch.__version__\\); import imblearn; print\\(''imblearn OK''\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(python preprocess.py --max-rows-per-file 15000)"
+    ]
+  }
+}
