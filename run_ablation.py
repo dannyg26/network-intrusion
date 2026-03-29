@@ -21,17 +21,22 @@ from evaluate import load_results, print_table, plot_curves
 
 
 EXPERIMENTS = [
-    # (name,              model,    smote, focal, lr_schedule)
-    ("baseline",          "mlp",     False, False, "none"),
-    ("baseline_smote",    "mlp",     True,  False, "none"),
-    ("baseline_focal",    "mlp",     False, True,  "none"),
-    ("cnn_lstm",          "cnn_lstm", False, False, "none"),
-    ("cnn_lstm_full",     "cnn_lstm", True,  True,  "cosine"),
+    # (name,                model,           smote,  focal, lr_schedule, focal_gamma)
+    ("baseline",            "mlp",           False, False, "none",    1.0),
+    ("baseline_smote",      "mlp",           True,  False, "none",    1.0),
+    ("baseline_focal",      "mlp",           False, True,  "none",    1.0),
+    ("cnn_lstm",            "cnn_lstm",      False, False, "none",    1.0),
+    ("cnn_lstm_full",       "cnn_lstm",      True,  True,  "cosine",  1.0),
+    # New: improved models
+    ("res_mlp",             "res_mlp",       False, False, "none",    1.0),
+    ("res_mlp_focal",       "res_mlp",       False, True,  "cosine",  1.0),
+    ("cnn_lstm_attn",       "cnn_lstm_attn", False, False, "none",    1.0),
+    ("cnn_lstm_attn_full",  "cnn_lstm_attn", False, True,  "cosine",  1.0),
 ]
 
 
-def run_experiment(name, model, smote, focal, lr_schedule, epochs, batch_size, lr,
-                   data_dir, results_dir):
+def run_experiment(name, model, smote, focal, lr_schedule, focal_gamma, epochs,
+                   batch_size, lr, data_dir, results_dir):
     cmd = [
         sys.executable, "train.py",
         "--experiment",  name,
@@ -46,7 +51,7 @@ def run_experiment(name, model, smote, focal, lr_schedule, epochs, batch_size, l
     if smote:
         cmd.append("--smote")
     if focal:
-        cmd.append("--focal-loss")
+        cmd.extend(["--focal-loss", "--focal-gamma", str(focal_gamma)])
 
     print(f"\n{'#'*60}")
     print(f"# Starting: {name}")
@@ -70,7 +75,7 @@ if __name__ == "__main__":
     import os
     successes, failures = [], []
 
-    for name, model, smote, focal, lr_sched in EXPERIMENTS:
+    for name, model, smote, focal, lr_sched, focal_gamma in EXPERIMENTS:
         result_file = os.path.join(args.results_dir, name, "results.json")
         if args.skip_done and os.path.exists(result_file):
             print(f"Skipping '{name}' (already done).")
@@ -78,7 +83,7 @@ if __name__ == "__main__":
             continue
 
         ok = run_experiment(
-            name, model, smote, focal, lr_sched,
+            name, model, smote, focal, lr_sched, focal_gamma,
             args.epochs, args.batch_size, args.lr,
             args.data_dir, args.results_dir,
         )

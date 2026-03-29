@@ -153,8 +153,8 @@ def train(args):
     # ── Loss ──────────────────────────────────────────────────────────────────
     cw = class_weights(y_train, num_classes, device)
     if args.focal_loss:
-        criterion = FocalLoss(gamma=2.0, weight=cw)
-        print("Loss: Focal Loss (gamma=2, class-weighted)")
+        criterion = FocalLoss(gamma=args.focal_gamma, weight=cw)
+        print(f"Loss: Focal Loss (gamma={args.focal_gamma}, class-weighted)")
     else:
         criterion = nn.CrossEntropyLoss(weight=cw)
         print("Loss: Weighted Cross-Entropy")
@@ -183,8 +183,9 @@ def train(args):
 
     # ── Training loop ─────────────────────────────────────────────────────────
     history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
-    best_val_acc = 0.0
-    best_epoch   = 0
+    best_val_acc    = 0.0
+    best_epoch      = 0
+    patience_counter = 0
 
     print(f"\n{'Ep':>4}  {'Train Loss':>10}  {'Train Acc':>9}  "
           f"{'Val Loss':>9}  {'Val Acc':>8}  {'LR':>10}  {'Time':>7}")
@@ -229,11 +230,17 @@ def train(args):
         print(f"{epoch:>4d}  {train_loss:>10.4f}  {train_acc:>9.4f}  "
               f"{val_loss:>9.4f}  {val_acc:>8.4f}  {current_lr:>10.2e}  {elapsed:>6.1f}s")
 
-        # Save best model
+        # Save best model + early stopping
         if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            best_epoch   = epoch
+            best_val_acc     = val_acc
+            best_epoch       = epoch
+            patience_counter = 0
             torch.save(model.state_dict(), os.path.join(exp_dir, "best_model.pt"))
+        else:
+            patience_counter += 1
+            if args.patience > 0 and patience_counter >= args.patience:
+                print(f"\nEarly stopping triggered (no improvement for {args.patience} epochs).")
+                break
 
     print(f"\nBest val acc: {best_val_acc:.4f} at epoch {best_epoch}")
 
@@ -286,6 +293,7 @@ def train(args):
         "model":         args.model,
         "smote":         args.smote,
         "focal_loss":    args.focal_loss,
+        "focal_gamma":   args.focal_gamma,
         "lr_schedule":   args.lr_schedule,
         "epochs":        args.epochs,
         "batch_size":    args.batch_size,
@@ -317,13 +325,17 @@ if __name__ == "__main__":
     parser.add_argument("--experiment",  default="experiment",
                         help="Name for this run (used as subdirectory in results/)")
     parser.add_argument("--model",       default="mlp",
-                        choices=["mlp", "cnn_lstm"])
+                        choices=["mlp", "res_mlp", "cnn_lstm", "cnn_lstm_attn"])
     parser.add_argument("--smote",       action="store_true")
     parser.add_argument("--focal-loss",  action="store_true")
+    parser.add_argument("--focal-gamma", type=float, default=1.0,
+                        help="Focal loss gamma (default 1.0; 2.0 is too aggressive)")
     parser.add_argument("--lr-schedule", default="none",
                         choices=["none", "cosine", "plateau"])
-    parser.add_argument("--epochs",      type=int,   default=20)
+    parser.add_argument("--epochs",      type=int,   default=30)
     parser.add_argument("--batch-size",  type=int,   default=256)
     parser.add_argument("--lr",          type=float, default=1e-3)
+    parser.add_argument("--patience",    type=int,   default=7,
+                        help="Early stopping patience (0 to disable)")
     args = parser.parse_args()
     train(args)

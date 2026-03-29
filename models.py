@@ -2,7 +2,8 @@
 models.py
 PyTorch model definitions:
   - MLPModel      : Baseline fully-connected network (256 → 128 → 64)
-  - CNNLSTMModel  : Hybrid 1D-Conv + LSTM model
+  - ResMLPModel   : Wider MLP with residual skip connections (512 → 256 → 128)
+  - CNNLSTMModel  : Hybrid 1D-Conv + LSTM model (optional self-attention)
 """
 
 import torch
@@ -52,6 +53,62 @@ class MLPModel(nn.Module):
         return self.net(x)
 
 
+# ── Residual MLP ─────────────────────────────────────────────────────────────
+class ResMLPModel(nn.Module):
+    """
+    Wider MLP with residual skip connections.
+    Architecture: Input → 512 → (512 residual) → (256 residual) → (128 residual) → num_classes
+    Skip connections help gradient flow and allow deeper training without degradation.
+    """
+
+    def __init__(self, input_dim: int, num_classes: int, dropout: float = 0.3):
+        super().__init__()
+        self.input_proj = nn.Sequential(
+            nn.Linear(input_dim, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+        )
+        # Residual block 1: 512 → 512
+        self.block1 = nn.Sequential(
+            nn.Linear(512, 512), nn.BatchNorm1d(512), nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(512, 512), nn.BatchNorm1d(512),
+        )
+        self.relu1 = nn.ReLU(inplace=True)
+        # Residual block 2: 512 → 256
+        self.block2 = nn.Sequential(
+            nn.Linear(512, 256), nn.BatchNorm1d(256), nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(256, 256), nn.BatchNorm1d(256),
+        )
+        self.proj2  = nn.Linear(512, 256, bias=False)
+        self.relu2  = nn.ReLU(inplace=True)
+        # Residual block 3: 256 → 128
+        self.block3 = nn.Sequential(
+            nn.Linear(256, 128), nn.BatchNorm1d(128), nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(128, 128), nn.BatchNorm1d(128),
+        )
+        self.proj3  = nn.Linear(256, 128, bias=False)
+        self.relu3  = nn.ReLU(inplace=True)
+
+        self.classifier = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        x = self.input_proj(x)
+
+        residual = x
+        x = self.relu1(self.block1(x) + residual)
+
+        residual = self.proj2(x)
+        x = self.relu2(self.block2(x) + residual)
+
+        residual = self.proj3(x)
+        x = self.relu3(self.block3(x) + residual)
+
+        return self.classifier(x)
+
+
 # ── CNN-LSTM Hybrid ───────────────────────────────────────────────────────────
 class CNNLSTMModel(nn.Module):
     """
@@ -75,9 +132,11 @@ class CNNLSTMModel(nn.Module):
         num_classes: int,
         lstm_hidden: int = 128,
         dropout: float = 0.3,
+        use_attention: bool = False,
     ):
         super().__init__()
-        self.input_dim = input_dim
+        self.input_dim    = input_dim
+        self.use_attention = use_attention
 
         # ── CNN blocks ───────────────────────────────────────────────────────
         self.conv1 = nn.Sequential(
@@ -93,14 +152,18 @@ class CNNLSTMModel(nn.Module):
             nn.MaxPool1d(kernel_size=2, stride=2),          # L/4
         )
 
-        # ── LSTM ─────────────────────────────────────────────────────────────
+        # ── LSTM (2 layers) ──────────────────────────────────────────────────
         self.lstm = nn.LSTM(
             input_size=128,
             hidden_size=lstm_hidden,
-            num_layers=1,
+            num_layers=2,
             batch_first=True,
-            dropout=0.0,
+            dropout=dropout,
         )
+
+        # ── Self-attention over LSTM timesteps ───────────────────────────────
+        if use_attention:
+            self.attn = nn.Linear(lstm_hidden, 1)
 
         # ── Classifier head ──────────────────────────────────────────────────
         self.classifier = nn.Sequential(
@@ -113,25 +176,31 @@ class CNNLSTMModel(nn.Module):
         )
 
     def forward(self, x):          # x: (B, input_dim)
-        B = x.size(0)
-        # Reshape to (B, channels=1, length=input_dim)
         out = x.unsqueeze(1)               # (B, 1, input_dim)
         out = self.conv1(out)              # (B, 64,  input_dim//2)
         out = self.conv2(out)              # (B, 128, input_dim//4)
-        # Permute for LSTM: (B, seq_len, features)
-        out = out.permute(0, 2, 1)        # (B, input_dim//4, 128)
-        out, _ = self.lstm(out)            # (B, input_dim//4, lstm_hidden)
-        out = out[:, -1, :]               # take last time-step (B, lstm_hidden)
+        out = out.permute(0, 2, 1)        # (B, seq_len, 128)
+        out, _ = self.lstm(out)            # (B, seq_len, lstm_hidden)
+        if self.use_attention:
+            # Weighted sum across timesteps instead of taking only last
+            weights = torch.softmax(self.attn(out), dim=1)  # (B, seq_len, 1)
+            out = (out * weights).sum(dim=1)                 # (B, lstm_hidden)
+        else:
+            out = out[:, -1, :]                              # (B, lstm_hidden)
         return self.classifier(out)        # (B, num_classes)
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
 def build_model(name: str, input_dim: int, num_classes: int, **kwargs) -> nn.Module:
-    """Return an MLP or CNN-LSTM model by name string."""
+    """Return a model by name string."""
     name = name.lower()
     if name == "mlp":
         return MLPModel(input_dim, num_classes, **kwargs)
+    elif name == "res_mlp":
+        return ResMLPModel(input_dim, num_classes, **kwargs)
     elif name in ("cnn_lstm", "cnnlstm"):
         return CNNLSTMModel(input_dim, num_classes, **kwargs)
+    elif name == "cnn_lstm_attn":
+        return CNNLSTMModel(input_dim, num_classes, use_attention=True, **kwargs)
     else:
-        raise ValueError(f"Unknown model '{name}'. Choose 'mlp' or 'cnn_lstm'.")
+        raise ValueError(f"Unknown model '{name}'. Choose 'mlp', 'res_mlp', 'cnn_lstm', or 'cnn_lstm_attn'.")
