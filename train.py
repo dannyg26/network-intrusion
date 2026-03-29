@@ -52,33 +52,33 @@ class FocalLoss(nn.Module):
 
 
 # ── SMOTE (via imbalanced-learn) ──────────────────────────────────────────────
-def apply_smote(X_train: np.ndarray, y_train: np.ndarray, cap: int = 50_000):
+def apply_smote(X_train: np.ndarray, y_train: np.ndarray, min_samples: int = 2_000):
     """
-    Apply SMOTE to oversample minority classes to `cap`, then RandomUnderSampler
-    to bring dominant classes down to `cap` as well — producing a fully balanced dataset.
+    Boost only the dead/tiny minority classes up to `min_samples` using SMOTE.
+    Dominant classes (e.g. DDoS) are left untouched — class-weighted loss handles
+    the remaining imbalance. This avoids throwing away large amounts of majority-class
+    data, which hurts overall accuracy.
     """
     from imblearn.over_sampling import SMOTE
-    from imblearn.under_sampling import RandomUnderSampler
 
     counts = np.bincount(y_train)
-    target = min(int(counts.max()), cap)
+    # Only oversample classes that are strictly below the minimum threshold
+    over_strategy = {
+        cls: min_samples
+        for cls, cnt in enumerate(counts)
+        if cnt < min_samples
+    }
+    if not over_strategy:
+        print("  SMOTE: all classes already above threshold, skipping.")
+        return X_train, y_train
 
-    # Only oversample classes that are below target
-    over_strategy = {cls: target for cls, cnt in enumerate(counts) if cnt < target}
-    print(f"  Applying SMOTE (target per class: {target:,})...", flush=True)
+    boosted_classes = {cls: cnt for cls, cnt in enumerate(counts) if cls in over_strategy}
+    print(f"  Boosting {len(over_strategy)} class(es) to {min_samples:,} samples: "
+          f"{boosted_classes}", flush=True)
     t0 = time.time()
     sm = SMOTE(random_state=42, sampling_strategy=over_strategy)
     X_res, y_res = sm.fit_resample(X_train, y_train)
-
-    # Undersample any class still above cap (e.g. dominant DDoS class)
-    counts_after = np.bincount(y_res)
-    under_strategy = {cls: cap for cls, cnt in enumerate(counts_after) if cnt > cap}
-    if under_strategy:
-        rus = RandomUnderSampler(random_state=42, sampling_strategy=under_strategy)
-        X_res, y_res = rus.fit_resample(X_res, y_res)
-
-    print(f"  SMOTE+Undersample done ({time.time()-t0:.1f}s): "
-          f"{len(X_train):,} -> {len(X_res):,} samples")
+    print(f"  SMOTE done ({time.time()-t0:.1f}s): {len(X_train):,} -> {len(X_res):,} samples")
     return X_res.astype(np.float32), y_res
 
 

@@ -43,6 +43,9 @@ EXPERIMENTS = [
 
     # Full improved model: attention + balanced SMOTE + cosine (no focal loss)
     ("cnn_lstm_attn_smote",  "cnn_lstm_attn", True,  False, "cosine",  1.0, 1e-4),
+
+    # Best candidate: attention + targeted SMOTE (boost dead classes only) + cosine
+    ("cnn_lstm_attn_boost",  "cnn_lstm_attn", True,  False, "cosine",  1.0, 1e-4),
 ]
 
 
