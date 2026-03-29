@@ -21,22 +21,34 @@ from evaluate import load_results, print_table, plot_curves
 
 
 EXPERIMENTS = [
-    # (name,                model,           smote,  focal, lr_schedule, focal_gamma)
-    ("baseline",            "mlp",           False, False, "none",    1.0),
-    ("baseline_smote",      "mlp",           True,  False, "none",    1.0),
-    ("baseline_focal",      "mlp",           False, True,  "none",    1.0),
-    ("cnn_lstm",            "cnn_lstm",      False, False, "none",    1.0),
-    ("cnn_lstm_full",       "cnn_lstm",      True,  True,  "cosine",  1.0),
-    # New: improved models
-    ("res_mlp",             "res_mlp",       False, False, "none",    1.0),
-    ("res_mlp_focal",       "res_mlp",       False, True,  "cosine",  1.0),
-    ("cnn_lstm_attn",       "cnn_lstm_attn", False, False, "none",    1.0),
-    ("cnn_lstm_attn_full",  "cnn_lstm_attn", False, True,  "cosine",  1.0),
+    # (name, model, smote, focal, lr_schedule, focal_gamma, lr_override)
+    # lr_override=None means use the global --lr arg; otherwise that LR is used for this run.
+
+    # ── Original ablation (kept for comparison) ────────────────────────────────
+    ("baseline",             "mlp",           False, False, "none",    1.0, None),
+    ("baseline_smote",       "mlp",           True,  False, "none",    1.0, None),
+    ("baseline_focal",       "mlp",           False, True,  "none",    1.0, None),
+    ("cnn_lstm",             "cnn_lstm",      False, False, "none",    1.0, None),
+    ("cnn_lstm_full",        "cnn_lstm",      True,  True,  "cosine",  1.0, None),
+
+    # ── Improved experiments ───────────────────────────────────────────────────
+    # ResMLPModel: wider + residual connections, no tricks
+    ("res_mlp",              "res_mlp",       False, False, "none",    1.0, None),
+
+    # CNN-LSTM with self-attention, no tricks (ceiling test)
+    ("cnn_lstm_attn",        "cnn_lstm_attn", False, False, "none",    1.0, None),
+
+    # Best candidate: attention + cosine LR at 1e-4 (finer convergence past plateau)
+    ("cnn_lstm_attn_cosine", "cnn_lstm_attn", False, False, "cosine",  1.0, 1e-4),
+
+    # Full improved model: attention + balanced SMOTE + cosine (no focal loss)
+    ("cnn_lstm_attn_smote",  "cnn_lstm_attn", True,  False, "cosine",  1.0, 1e-4),
 ]
 
 
-def run_experiment(name, model, smote, focal, lr_schedule, focal_gamma, epochs,
-                   batch_size, lr, data_dir, results_dir):
+def run_experiment(name, model, smote, focal, lr_schedule, focal_gamma, lr_override,
+                   epochs, batch_size, lr, patience, data_dir, results_dir):
+    effective_lr = lr_override if lr_override is not None else lr
     cmd = [
         sys.executable, "train.py",
         "--experiment",  name,
@@ -44,7 +56,8 @@ def run_experiment(name, model, smote, focal, lr_schedule, focal_gamma, epochs,
         "--lr-schedule", lr_schedule,
         "--epochs",      str(epochs),
         "--batch-size",  str(batch_size),
-        "--lr",          str(lr),
+        "--lr",          str(effective_lr),
+        "--patience",    str(patience),
         "--data-dir",    data_dir,
         "--results-dir", results_dir,
     ]
@@ -54,7 +67,7 @@ def run_experiment(name, model, smote, focal, lr_schedule, focal_gamma, epochs,
         cmd.extend(["--focal-loss", "--focal-gamma", str(focal_gamma)])
 
     print(f"\n{'#'*60}")
-    print(f"# Starting: {name}")
+    print(f"# Starting: {name}  (lr={effective_lr})")
     print(f"# Command : {' '.join(cmd)}")
     print(f"{'#'*60}")
     result = subprocess.run(cmd)
@@ -63,9 +76,10 @@ def run_experiment(name, model, smote, focal, lr_schedule, focal_gamma, epochs,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs",      type=int,   default=20)
+    parser.add_argument("--epochs",      type=int,   default=50)
     parser.add_argument("--batch-size",  type=int,   default=256)
     parser.add_argument("--lr",          type=float, default=1e-3)
+    parser.add_argument("--patience",    type=int,   default=10)
     parser.add_argument("--data-dir",    default="processed")
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--skip-done",   action="store_true",
@@ -75,7 +89,7 @@ if __name__ == "__main__":
     import os
     successes, failures = [], []
 
-    for name, model, smote, focal, lr_sched, focal_gamma in EXPERIMENTS:
+    for name, model, smote, focal, lr_sched, focal_gamma, lr_override in EXPERIMENTS:
         result_file = os.path.join(args.results_dir, name, "results.json")
         if args.skip_done and os.path.exists(result_file):
             print(f"Skipping '{name}' (already done).")
@@ -83,8 +97,8 @@ if __name__ == "__main__":
             continue
 
         ok = run_experiment(
-            name, model, smote, focal, lr_sched, focal_gamma,
-            args.epochs, args.batch_size, args.lr,
+            name, model, smote, focal, lr_sched, focal_gamma, lr_override,
+            args.epochs, args.batch_size, args.lr, args.patience,
             args.data_dir, args.results_dir,
         )
         (successes if ok else failures).append(name)

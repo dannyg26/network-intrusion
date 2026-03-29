@@ -54,18 +54,31 @@ class FocalLoss(nn.Module):
 # ── SMOTE (via imbalanced-learn) ──────────────────────────────────────────────
 def apply_smote(X_train: np.ndarray, y_train: np.ndarray, cap: int = 50_000):
     """
-    Apply SMOTE with a per-class cap so minority classes are oversampled up to
-    `cap` samples — avoiding the O(n^2) cost of balancing against a ~480k DDoS class.
+    Apply SMOTE to oversample minority classes to `cap`, then RandomUnderSampler
+    to bring dominant classes down to `cap` as well — producing a fully balanced dataset.
     """
     from imblearn.over_sampling import SMOTE
+    from imblearn.under_sampling import RandomUnderSampler
+
     counts = np.bincount(y_train)
     target = min(int(counts.max()), cap)
-    strategy = {cls: max(target, cnt) for cls, cnt in enumerate(counts)}
+
+    # Only oversample classes that are below target
+    over_strategy = {cls: target for cls, cnt in enumerate(counts) if cnt < target}
     print(f"  Applying SMOTE (target per class: {target:,})...", flush=True)
     t0 = time.time()
-    sm = SMOTE(random_state=42, sampling_strategy=strategy)
+    sm = SMOTE(random_state=42, sampling_strategy=over_strategy)
     X_res, y_res = sm.fit_resample(X_train, y_train)
-    print(f"  SMOTE done ({time.time()-t0:.1f}s): {len(X_train):,} -> {len(X_res):,} samples")
+
+    # Undersample any class still above cap (e.g. dominant DDoS class)
+    counts_after = np.bincount(y_res)
+    under_strategy = {cls: cap for cls, cnt in enumerate(counts_after) if cnt > cap}
+    if under_strategy:
+        rus = RandomUnderSampler(random_state=42, sampling_strategy=under_strategy)
+        X_res, y_res = rus.fit_resample(X_res, y_res)
+
+    print(f"  SMOTE+Undersample done ({time.time()-t0:.1f}s): "
+          f"{len(X_train):,} -> {len(X_res):,} samples")
     return X_res.astype(np.float32), y_res
 
 
@@ -328,8 +341,8 @@ if __name__ == "__main__":
                         choices=["mlp", "res_mlp", "cnn_lstm", "cnn_lstm_attn"])
     parser.add_argument("--smote",       action="store_true")
     parser.add_argument("--focal-loss",  action="store_true")
-    parser.add_argument("--focal-gamma", type=float, default=1.0,
-                        help="Focal loss gamma (default 1.0; 2.0 is too aggressive)")
+    parser.add_argument("--focal-gamma", type=float, default=0.5,
+                        help="Focal loss gamma (default 0.5; 1.0+ is too aggressive for this dataset)")
     parser.add_argument("--lr-schedule", default="none",
                         choices=["none", "cosine", "plateau"])
     parser.add_argument("--epochs",      type=int,   default=30)
