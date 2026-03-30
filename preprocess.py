@@ -122,6 +122,18 @@ def preprocess(data_dir: str, out_dir: str, max_rows_per_file: int | None = None
     medians = X.median()
     X.fillna(medians, inplace=True)
 
+    # Log-transform heavily right-skewed continuous features.
+    # DDoS/DoS floods produce extreme values in these columns; log1p compresses
+    # the scale so the model can find the DDoS vs DoS decision boundary.
+    LOG_COLS = [
+        "Rate", "Tot sum", "Min", "Max", "AVG", "Std", "IAT", "Variance",
+        "Header_Length", "ack_count", "syn_count", "fin_count", "rst_count",
+        "Number",
+    ]
+    for col in LOG_COLS:
+        if col in X.columns:
+            X[col] = np.log1p(X[col].clip(lower=0))
+
     # ── Encode labels ────────────────────────────────────────────────────────
     le = LabelEncoder()
     y = le.fit_transform(y_raw)
