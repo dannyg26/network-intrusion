@@ -186,6 +186,13 @@ def train(args):
             optimizer, mode="min", patience=5, factor=0.3, min_lr=1e-6
         )
         print("LR Schedule: ReduceLROnPlateau (patience=5, factor=0.3, min_lr=1e-6)")
+    elif args.lr_schedule == "warmrestart":
+        # T_0=10: restart every 10 epochs, T_mult=2: double the cycle each restart
+        # LR resets back to lr at each restart, letting the model escape local minima
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=10, T_mult=2, eta_min=1e-6
+        )
+        print("LR Schedule: CosineAnnealingWarmRestarts (T_0=10, T_mult=2)")
     else:
         scheduler = None
         print("LR Schedule: None (fixed)")
@@ -344,7 +351,7 @@ if __name__ == "__main__":
     parser.add_argument("--focal-gamma", type=float, default=0.5,
                         help="Focal loss gamma (default 0.5; 1.0+ is too aggressive for this dataset)")
     parser.add_argument("--lr-schedule", default="none",
-                        choices=["none", "cosine", "plateau"])
+                        choices=["none", "cosine", "plateau", "warmrestart"])
     parser.add_argument("--epochs",      type=int,   default=30)
     parser.add_argument("--batch-size",  type=int,   default=256)
     parser.add_argument("--lr",          type=float, default=1e-3)
