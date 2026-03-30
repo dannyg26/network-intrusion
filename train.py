@@ -183,7 +183,7 @@ def train(args):
         print(f"LR Schedule: Cosine Annealing (T_max={args.epochs})")
     elif args.lr_schedule == "plateau":
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", patience=3, factor=0.5, verbose=True
+            optimizer, mode="min", patience=3, factor=0.5
         )
         print("LR Schedule: ReduceLROnPlateau (patience=3, factor=0.5)")
     else:
