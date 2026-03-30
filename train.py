@@ -178,14 +178,14 @@ def train(args):
     # ── LR Scheduler ─────────────────────────────────────────────────────────
     if args.lr_schedule == "cosine":
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=args.epochs
+            optimizer, T_max=args.epochs, eta_min=1e-6
         )
         print(f"LR Schedule: Cosine Annealing (T_max={args.epochs})")
     elif args.lr_schedule == "plateau":
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", patience=3, factor=0.5
+            optimizer, mode="min", patience=5, factor=0.3, min_lr=1e-6
         )
-        print("LR Schedule: ReduceLROnPlateau (patience=3, factor=0.5)")
+        print("LR Schedule: ReduceLROnPlateau (patience=5, factor=0.3, min_lr=1e-6)")
     else:
         scheduler = None
         print("LR Schedule: None (fixed)")
