@@ -134,6 +134,24 @@ def preprocess(data_dir: str, out_dir: str, max_rows_per_file: int | None = None
         if col in X.columns:
             X[col] = np.log1p(X[col].clip(lower=0))
 
+    # ── Engineered features ──────────────────────────────────────────────────
+    # These ratio features give the model direct signal to separate DDoS from DoS.
+    # DDoS floods have many more SYN packets relative to ACKs (distributed sources
+    # never complete the handshake), high rate per packet, and low avg packet size.
+    n = X["Number"].clip(lower=0)
+    X["syn_ack_ratio"]  = X["syn_count"]  / (X["ack_count"] + 1e-8)
+    X["fin_syn_ratio"]  = X["fin_count"]  / (X["syn_count"]  + 1e-8)
+    X["rst_syn_ratio"]  = X["rst_count"]  / (X["syn_count"]  + 1e-8)
+    X["avg_pkt_size"]   = X["Tot size"]   / (n + 1)
+    X["rate_per_pkt"]   = X["Rate"]       / (n + 1)
+    X["coeff_var"]      = X["Std"]        / (X["AVG"] + 1e-8)
+    # Log-transform the new ratio features too (they can be very skewed)
+    for col in ["syn_ack_ratio", "fin_syn_ratio", "rst_syn_ratio",
+                "avg_pkt_size", "rate_per_pkt", "coeff_var"]:
+        X[col] = np.log1p(X[col].clip(lower=0))
+
+    print(f"Feature count after engineering: {X.shape[1]}")
+
     # ── Encode labels ────────────────────────────────────────────────────────
     le = LabelEncoder()
     y = le.fit_transform(y_raw)
