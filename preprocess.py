@@ -18,24 +18,24 @@ import pickle
 
 # ── Label → macro-category mapping ──────────────────────────────────────────
 LABEL_MAP = {
-    # DDoS
-    "DDOS-ACK_FRAGMENTATION":   "DDoS",
-    "DDOS-HTTP_FLOOD":          "DDoS",
-    "DDOS-ICMP_FLOOD":          "DDoS",
-    "DDOS-ICMP_FRAGMENTATION":  "DDoS",
-    "DDOS-PSHACK_FLOOD":        "DDoS",
-    "DDOS-RSTFINFLOOD":         "DDoS",
-    "DDOS-SLOWLORIS":           "DDoS",
-    "DDOS-SYNONYMOUSIP_FLOOD":  "DDoS",
-    "DDOS-SYN_FLOOD":           "DDoS",
-    "DDOS-TCP_FLOOD":           "DDoS",
-    "DDOS-UDP_FLOOD":           "DDoS",
-    "DDOS-UDP_FRAGMENTATION":   "DDoS",
-    # DoS
-    "DOS-HTTP_FLOOD":           "DoS",
-    "DOS-SYN_FLOOD":            "DoS",
-    "DOS-TCP_FLOOD":            "DoS",
-    "DOS-UDP_FLOOD":            "DoS",
+    # Flood (merged DDoS + DoS — identical per-flow features, only differ in
+    # source diversity which is invisible to single-flow CICFlowMeter features)
+    "DDOS-ACK_FRAGMENTATION":   "Flood",
+    "DDOS-HTTP_FLOOD":          "Flood",
+    "DDOS-ICMP_FLOOD":          "Flood",
+    "DDOS-ICMP_FRAGMENTATION":  "Flood",
+    "DDOS-PSHACK_FLOOD":        "Flood",
+    "DDOS-RSTFINFLOOD":         "Flood",
+    "DDOS-SLOWLORIS":           "Flood",
+    "DDOS-SYNONYMOUSIP_FLOOD":  "Flood",
+    "DDOS-SYN_FLOOD":           "Flood",
+    "DDOS-TCP_FLOOD":           "Flood",
+    "DDOS-UDP_FLOOD":           "Flood",
+    "DDOS-UDP_FRAGMENTATION":   "Flood",
+    "DOS-HTTP_FLOOD":           "Flood",
+    "DOS-SYN_FLOOD":            "Flood",
+    "DOS-TCP_FLOOD":            "Flood",
+    "DOS-UDP_FLOOD":            "Flood",
     # Recon
     "RECON-HOSTDISCOVERY":      "Recon",
     "RECON-OSSCAN":             "Recon",
