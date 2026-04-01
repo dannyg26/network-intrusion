@@ -24,6 +24,7 @@ import pickle
 import time
 
 import numpy as np
+import sympy.printing  # force-load before torch to avoid AttributeError in Colab
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
